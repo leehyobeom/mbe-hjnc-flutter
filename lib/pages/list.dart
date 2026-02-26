@@ -1,25 +1,117 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:mbe_hjnc_flutter/pages/create.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'create.dart';
+import 'read.dart';
+
+class Community {
+  final String communityId;
+  final String title;
+  final List images;
+  final String updatedAt;
+
+  Community({
+    required this.communityId,
+    required this.title,
+    required this.images,
+    required this.updatedAt,
+  });
+
+  factory Community.fromJson(Map<String, dynamic> json) {
+    return Community(
+      communityId: json['communityId'],
+      title: json['title'] ?? "",
+      images: json['images'] ?? [],
+      updatedAt: json['updatedAt'] ?? "",
+    );
+  }
+}
 
 class ListPage extends StatefulWidget {
   const ListPage({super.key});
+
   @override
   State<ListPage> createState() => _ListPageState();
 }
 
 class _ListPageState extends State<ListPage> {
-  final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
+  final Dio dio = Dio();
+  final ScrollController scrollController = ScrollController();
+  final TextEditingController searchController = TextEditingController();
 
-  List<Map<String, String>> posts = List.generate(
-    20,
-        (index) => {
-      "title": "게시글 제목 ${index + 1}",
-      "date": _formatDate(DateTime.now().subtract(Duration(hours: index * 3))),
-    },
-  );
+  Timer? _debounce;
 
-  static String _formatDate(DateTime date) {
+  List<Community> communities = [];
+
+  int page = 0;
+  bool isLoading = false;
+  bool hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchList();
+
+    scrollController.addListener(() {
+      if (scrollController.position.pixels >=
+          scrollController.position.maxScrollExtent - 200 &&
+          !isLoading &&
+          hasMore) {
+        fetchList();
+      }
+    });
+  }
+
+  Future<void> fetchList({bool reset = false}) async {
+    final backUrl = dotenv.env['BACK_URL'];
+    if (isLoading) return;
+    if (reset) {
+      page = 0;
+      communities.clear();
+      hasMore = true;
+    }
+    setState(() => isLoading = true);
+    try {
+      final response = await dio.put(
+        "$backUrl/community/read/list",
+        data: {
+          "search": searchController.text,
+          "page": page,
+        },
+      );
+
+      final data = response.data;
+      List list = [];
+      if (data is Map &&
+          data['result'] != null &&
+          data['result']['communities'] is List) {
+        list = data['result']['communities'];
+      }
+
+      if (list.isNotEmpty) {
+        setState(() {
+          communities.addAll(
+            list.map((e) => Community.fromJson(e)).toList(),
+          );
+          page++;
+        });
+      } else {
+        hasMore = false;
+      }
+
+    } catch (e) {
+      print("리스트 로드 실패: $e");
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  String formatDate(String iso) {
+    if (iso.isEmpty) return "";
+    final date = DateTime.parse(iso);
     return "${date.year.toString().substring(2)}."
         "${date.month.toString().padLeft(2, '0')}."
         "${date.day.toString().padLeft(2, '0')} "
@@ -27,75 +119,79 @@ class _ListPageState extends State<ListPage> {
   }
 
   @override
-  void initState() {
-    super.initState();
-
-    // 스크롤 끝 감지 (나중에 서버에서 추가 로딩용)
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels ==
-          _scrollController.position.maxScrollExtent) {
-        print("맨 아래 도달 - 나중에 서버 호출");
-      }
-    });
-  }
-
-  @override
   void dispose() {
-    _scrollController.dispose();
-    _searchController.dispose();
+    _debounce?.cancel();
+    scrollController.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-      ),
+      appBar: AppBar(title: const Text("Community")),
+
       body: Column(
         children: [
-          // 🔍 검색창
+
+          /// 🔍 검색창
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: "검색어를 입력하세요",
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: () {
-                    print("검색: ${_searchController.text}");
-                  },
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              controller: searchController,
+              decoration: const InputDecoration(
+                hintText: "검색어 입력",
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.search),
               ),
+              onChanged: (value) {
+                if (_debounce?.isActive ?? false) {
+                  _debounce!.cancel();
+                }
+
+                _debounce = Timer(const Duration(milliseconds: 400), () {
+                  fetchList(reset: true);
+                });
+              },
             ),
           ),
 
-          // 📄 게시글 목록
+          /// 📄 리스트
           Expanded(
-            child: ListView.separated(
-              controller: _scrollController,
-              itemCount: posts.length,
-              separatorBuilder: (context, index) =>
-              const Divider(height: 1),
+            child: ListView.builder(
+              controller: scrollController,
+              itemCount: communities.length + 1,
               itemBuilder: (context, index) {
-                final post = posts[index];
+
+                if (index == communities.length) {
+                  return isLoading
+                      ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                      : const SizedBox();
+                }
+
+                final item = communities[index];
 
                 return ListTile(
-                  title: Text(
-                    post["title"]!,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  subtitle: Text(
-                    post["date"]!,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    print("글 클릭: ${post["title"]}");
+                  title: Text(item.title),
+                  subtitle: Text(formatDate(item.updatedAt)),
+                  onTap: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReadPage(
+                          communityId: item.communityId,
+                        ),
+                      ),
+                    );
+
+                    if (result == true) {
+                      fetchList(reset: true);
+                    }
                   },
                 );
               },
@@ -104,17 +200,19 @@ class _ListPageState extends State<ListPage> {
         ],
       ),
 
-      // ➕ 글쓰기 버튼
+      /// ➕ 글쓰기 버튼
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const CreatePage(),
+              builder: (_) => const CreatePage(),
             ),
           );
+
+          fetchList(reset: true);
         },
-        child: const Icon(Icons.edit),
+        child: const Icon(Icons.add),
       ),
     );
   }

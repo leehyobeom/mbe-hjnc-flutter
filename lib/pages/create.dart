@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class CreatePage extends StatefulWidget {
   const CreatePage({super.key});
@@ -13,7 +15,10 @@ class CreatePage extends StatefulWidget {
 
 class _CreatePageState extends State<CreatePage> {
   final ImagePicker _picker = ImagePicker();
+  final Dio dio = Dio();
+
   List<XFile> images = [];
+  bool isUploading = false;
 
   final TextEditingController titleController = TextEditingController();
   final TextEditingController vesselController = TextEditingController();
@@ -51,6 +56,78 @@ class _CreatePageState extends State<CreatePage> {
     }
   }
 
+  Future<void> uploadCommunity() async {
+    final backUrl = dotenv.env['BACK_URL'];
+
+    if (backUrl == null) {
+      print("BACK_URL 없음");
+      return;
+    }
+
+    try {
+      setState(() => isUploading = true);
+
+      final dio = Dio();
+
+      List<MultipartFile> imageFiles = [];
+
+      for (var img in images) {
+        imageFiles.add(
+          await MultipartFile.fromFile(
+            img.path,
+            filename: img.name,
+          ),
+        );
+      }
+
+      final formData = FormData.fromMap({
+        "title": titleController.text,
+        "text": contentController.text,
+        "vesselCode": vesselController.text,
+        "bay": bayController.text,
+
+        // ⚠ multipart는 문자열로 들어가니까
+        "isHold": selectedLocation == "홀드" ? "true" : "false",
+        "isLD": selectedType == "선적" ? "true" : "false",
+        "files": imageFiles,
+      });
+
+      print("=== REQUEST URL ===");
+      print("$backUrl/community/create");
+
+      final response = await dio.put(
+        "$backUrl/community/create",
+        data: formData,
+        options: Options(
+          contentType: "multipart/form-data",
+          validateStatus: (status) => true, // 400도 응답 받게
+        ),
+      );
+
+      print("=== RESPONSE ===");
+      print("STATUS: ${response.statusCode}");
+      print("DATA: ${response.data}");
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("업로드 성공")),
+        );
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("업로드 실패")),
+        );
+      }
+
+    } catch (e) {
+      print("업로드 예외 발생: $e");
+    } finally {
+      if (mounted) {
+        setState(() => isUploading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,7 +135,7 @@ class _CreatePageState extends State<CreatePage> {
         child: CustomScrollView(
           slivers: [
 
-            /// 🔙 뒤로가기
+            /// 뒤로가기
             SliverToBoxAdapter(
               child: Align(
                 alignment: Alignment.topLeft,
@@ -69,7 +146,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
             ),
 
-            /// 📸 이미지 Grid
+            /// 이미지 Grid
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverToBoxAdapter(
@@ -86,7 +163,6 @@ class _CreatePageState extends State<CreatePage> {
                   onReorder: reorder,
                   itemBuilder: (context, index) {
 
-                    /// ➕ Add 버튼
                     if (index == images.length && images.length < 9) {
                       return Container(
                         key: const ValueKey("add_button"),
@@ -101,17 +177,14 @@ class _CreatePageState extends State<CreatePage> {
                             children: [
                               Icon(Icons.add_photo_alternate, size: 30),
                               SizedBox(height: 6),
-                              Text(
-                                "Add Image",
-                                style: TextStyle(fontSize: 12),
-                              ),
+                              Text("Add Image",
+                                  style: TextStyle(fontSize: 12)),
                             ],
                           ),
                         ),
                       );
                     }
 
-                    /// 📸 이미지 카드
                     return Stack(
                       key: ValueKey(images[index].path),
                       children: [
@@ -149,14 +222,14 @@ class _CreatePageState extends State<CreatePage> {
               ),
             ),
 
-            /// 📄 입력 폼
+            /// 입력폼
             SliverPadding(
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+
                   const SizedBox(height: 20),
 
-                  /// 제목
                   TextField(
                     controller: titleController,
                     decoration: const InputDecoration(
@@ -167,7 +240,6 @@ class _CreatePageState extends State<CreatePage> {
 
                   const SizedBox(height: 12),
 
-                  /// Vessel + Bay (3:1)
                   Row(
                     children: [
                       Expanded(
@@ -196,7 +268,6 @@ class _CreatePageState extends State<CreatePage> {
 
                   const SizedBox(height: 12),
 
-                  /// 내용
                   TextField(
                     controller: contentController,
                     maxLines: 5,
@@ -208,7 +279,6 @@ class _CreatePageState extends State<CreatePage> {
 
                   const SizedBox(height: 20),
 
-                  /// 선적 / 양하
                   const Text("작업 구분"),
                   Row(
                     children: [
@@ -228,10 +298,8 @@ class _CreatePageState extends State<CreatePage> {
                       const Text("양하"),
                     ],
                   ),
-
                   const SizedBox(height: 10),
 
-                  /// 홀드 / 데크
                   const Text("위치"),
                   Row(
                     children: [
@@ -250,6 +318,20 @@ class _CreatePageState extends State<CreatePage> {
                       ),
                       const Text("데크"),
                     ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  ElevatedButton(
+                    onPressed: isUploading ? null : uploadCommunity,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                    child: isUploading
+                        ? const CircularProgressIndicator(
+                      color: Colors.white,
+                    )
+                        : const Text("업로드"),
                   ),
 
                   const SizedBox(height: 50),
