@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
@@ -18,6 +20,7 @@ class _CreatePageState extends State<CreatePage> {
   final Dio dio = Dio();
 
   List<XFile> images = [];
+  List<Uint8List> webImages = []; // 웹용 이미지 바이트
   bool isUploading = false;
 
   final TextEditingController titleController = TextEditingController();
@@ -28,6 +31,9 @@ class _CreatePageState extends State<CreatePage> {
   String selectedType = "선적";
   String selectedLocation = "홀드";
 
+  /// ==============================
+  /// 이미지 선택
+  /// ==============================
   Future<void> pickImages() async {
     final picked = await _picker.pickMultiImage();
     if (picked.isEmpty) return;
@@ -37,28 +43,52 @@ class _CreatePageState extends State<CreatePage> {
       return;
     }
 
-    setState(() {
+    if (kIsWeb) {
+      for (var file in picked) {
+        final bytes = await file.readAsBytes();
+        webImages.add(bytes);
+        images.add(file);
+      }
+    } else {
       images.addAll(picked);
-    });
-  }
-
-  void removeImage(int index) {
-    setState(() {
-      images.removeAt(index);
-    });
-  }
-
-  void reorder(int oldIndex, int newIndex) {
-    if (oldIndex < images.length && newIndex < images.length) {
-      final item = images.removeAt(oldIndex);
-      images.insert(newIndex, item);
-      setState(() {});
     }
+
+    setState(() {});
   }
 
+  /// ==============================
+  /// 이미지 삭제
+  /// ==============================
+  void removeImage(int index) {
+    images.removeAt(index);
+    if (kIsWeb) {
+      webImages.removeAt(index);
+    }
+    setState(() {});
+  }
+
+  /// ==============================
+  /// 이미지 순서 변경
+  /// ==============================
+  void reorder(int oldIndex, int newIndex) {
+    if (newIndex > images.length) newIndex = images.length;
+
+    final img = images.removeAt(oldIndex);
+    images.insert(newIndex, img);
+
+    if (kIsWeb) {
+      final bytes = webImages.removeAt(oldIndex);
+      webImages.insert(newIndex, bytes);
+    }
+
+    setState(() {});
+  }
+
+  /// ==============================
+  /// 업로드
+  /// ==============================
   Future<void> uploadCommunity() async {
     final backUrl = dotenv.env['BACK_URL'];
-
     if (backUrl == null) {
       print("BACK_URL 없음");
       return;
@@ -67,17 +97,24 @@ class _CreatePageState extends State<CreatePage> {
     try {
       setState(() => isUploading = true);
 
-      final dio = Dio();
-
       List<MultipartFile> imageFiles = [];
 
-      for (var img in images) {
-        imageFiles.add(
-          await MultipartFile.fromFile(
-            img.path,
-            filename: img.name,
-          ),
-        );
+      for (int i = 0; i < images.length; i++) {
+        if (kIsWeb) {
+          imageFiles.add(
+            MultipartFile.fromBytes(
+              webImages[i],
+              filename: images[i].name,
+            ),
+          );
+        } else {
+          imageFiles.add(
+            await MultipartFile.fromFile(
+              images[i].path,
+              filename: images[i].name,
+            ),
+          );
+        }
       }
 
       final formData = FormData.fromMap({
@@ -85,28 +122,19 @@ class _CreatePageState extends State<CreatePage> {
         "text": contentController.text,
         "vesselCode": vesselController.text,
         "bay": bayController.text,
-
-        // ⚠ multipart는 문자열로 들어가니까
         "isHold": selectedLocation == "홀드" ? "true" : "false",
         "isLD": selectedType == "선적" ? "true" : "false",
         "files": imageFiles,
       });
-
-      print("=== REQUEST URL ===");
-      print("$backUrl/community/create");
 
       final response = await dio.put(
         "$backUrl/community/create",
         data: formData,
         options: Options(
           contentType: "multipart/form-data",
-          validateStatus: (status) => true, // 400도 응답 받게
+          validateStatus: (status) => true,
         ),
       );
-
-      print("=== RESPONSE ===");
-      print("STATUS: ${response.statusCode}");
-      print("DATA: ${response.data}");
 
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,10 +143,9 @@ class _CreatePageState extends State<CreatePage> {
         Navigator.pop(context);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("업로드 실패")),
+          SnackBar(content: Text("업로드 실패 (${response.statusCode})")),
         );
       }
-
     } catch (e) {
       print("업로드 예외 발생: $e");
     } finally {
@@ -128,6 +155,9 @@ class _CreatePageState extends State<CreatePage> {
     }
   }
 
+  /// ==============================
+  /// UI
+  /// ==============================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -186,12 +216,17 @@ class _CreatePageState extends State<CreatePage> {
                     }
 
                     return Stack(
-                      key: ValueKey(images[index].path),
+                      key: ValueKey(images[index].name + index.toString()),
                       children: [
                         Positioned.fill(
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(10),
-                            child: Image.file(
+                            child: kIsWeb
+                                ? Image.memory(
+                              webImages[index],
+                              fit: BoxFit.cover,
+                            )
+                                : Image.file(
                               File(images[index].path),
                               fit: BoxFit.cover,
                             ),
@@ -227,7 +262,6 @@ class _CreatePageState extends State<CreatePage> {
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-
                   const SizedBox(height: 20),
 
                   TextField(
@@ -298,6 +332,7 @@ class _CreatePageState extends State<CreatePage> {
                       const Text("양하"),
                     ],
                   ),
+
                   const SizedBox(height: 10),
 
                   const Text("위치"),

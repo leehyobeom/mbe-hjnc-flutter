@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,6 +27,8 @@ class _UpdatePageState extends State<UpdatePage> {
   final TextEditingController bayController = TextEditingController();
 
   List<Object> images = []; // String (서버) + XFile (로컬)
+  Map<XFile, Uint8List> webImageBytes = {}; // 웹용 바이트 저장
+
   List<String> deletedImages = [];
 
   bool isHold = true;
@@ -37,6 +41,9 @@ class _UpdatePageState extends State<UpdatePage> {
     fetchDetail();
   }
 
+  /// ==============================
+  /// 상세 조회
+  /// ==============================
   Future<void> fetchDetail() async {
     final backUrl = dotenv.env['BACK_URL'];
 
@@ -63,36 +70,55 @@ class _UpdatePageState extends State<UpdatePage> {
     setState(() => isLoading = false);
   }
 
+  /// ==============================
+  /// 이미지 선택
+  /// ==============================
   Future<void> pickImages() async {
     final picked = await picker.pickMultiImage();
-    if (picked.isNotEmpty) {
-      setState(() {
-        images.addAll(picked);
-      });
+    if (picked.isEmpty) return;
+
+    for (var file in picked) {
+      if (kIsWeb) {
+        final bytes = await file.readAsBytes();
+        webImageBytes[file] = bytes;
+      }
+      images.add(file);
     }
+
+    setState(() {});
   }
 
+  /// ==============================
+  /// 이미지 삭제
+  /// ==============================
   void removeImage(int index) {
     final img = images[index];
 
     if (img is String) {
       deletedImages.add(img);
+    } else if (img is XFile && kIsWeb) {
+      webImageBytes.remove(img);
     }
 
-    setState(() {
-      images.removeAt(index);
-    });
+    images.removeAt(index);
+    setState(() {});
   }
 
+  /// ==============================
+  /// 순서 변경
+  /// ==============================
   void reorder(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex--;
 
-    setState(() {
-      final item = images.removeAt(oldIndex);
-      images.insert(newIndex, item);
-    });
+    final item = images.removeAt(oldIndex);
+    images.insert(newIndex, item);
+
+    setState(() {});
   }
 
+  /// ==============================
+  /// 수정 제출
+  /// ==============================
   Future<void> submitUpdate() async {
     final backUrl = dotenv.env['BACK_URL'];
 
@@ -102,7 +128,6 @@ class _UpdatePageState extends State<UpdatePage> {
       List<Map<String, dynamic>> changedImages = [];
       List<MultipartFile> newFiles = [];
 
-      // 현재 화면 순서 그대로 index 부여
       for (int i = 0; i < images.length; i++) {
         final img = images[i];
 
@@ -112,32 +137,35 @@ class _UpdatePageState extends State<UpdatePage> {
             "url": img,
           });
         } else if (img is XFile) {
-          newFiles.add(
-            await MultipartFile.fromFile(
-              img.path,
-              filename: img.name,
-            ),
-          );
+          if (kIsWeb) {
+            newFiles.add(
+              MultipartFile.fromBytes(
+                webImageBytes[img]!,
+                filename: img.name,
+              ),
+            );
+          } else {
+            newFiles.add(
+              await MultipartFile.fromFile(
+                img.path,
+                filename: img.name,
+              ),
+            );
+          }
         }
       }
 
-      FormData formData = FormData();
-
-      formData.fields.add(MapEntry("communityId", widget.communityId));
-      formData.fields.add(MapEntry("title", titleController.text));
-      formData.fields.add(MapEntry("text", textController.text));
-      formData.fields.add(MapEntry("vesselCode", vesselController.text));
-      formData.fields.add(MapEntry("bay", bayController.text));
-      formData.fields.add(MapEntry("isHold", isHold.toString()));
-      formData.fields.add(MapEntry("isLD", isLD.toString()));
-
-      formData.fields.add(
-        MapEntry("deletedImages", jsonEncode(deletedImages)),
-      );
-
-      formData.fields.add(
-        MapEntry("changedImages", jsonEncode(changedImages)),
-      );
+      FormData formData = FormData.fromMap({
+        "communityId": widget.communityId,
+        "title": titleController.text,
+        "text": textController.text,
+        "vesselCode": vesselController.text,
+        "bay": bayController.text,
+        "isHold": isHold.toString(),
+        "isLD": isLD.toString(),
+        "deletedImages": jsonEncode(deletedImages),
+        "changedImages": jsonEncode(changedImages),
+      });
 
       for (var file in newFiles) {
         formData.files.add(MapEntry("files", file));
@@ -157,8 +185,7 @@ class _UpdatePageState extends State<UpdatePage> {
         );
         Navigator.pop(context, true);
       }
-
-    } on DioException catch (e) {
+    } on DioException {
       setState(() => isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -167,6 +194,9 @@ class _UpdatePageState extends State<UpdatePage> {
     }
   }
 
+  /// ==============================
+  /// UI
+  /// ==============================
   @override
   Widget build(BuildContext context) {
     final backUrl = dotenv.env['BACK_URL'];
@@ -210,7 +240,6 @@ class _UpdatePageState extends State<UpdatePage> {
                     }
 
                     final img = images[index];
-
                     Widget imageWidget;
 
                     if (img is String) {
@@ -219,7 +248,12 @@ class _UpdatePageState extends State<UpdatePage> {
                         fit: BoxFit.cover,
                       );
                     } else if (img is XFile) {
-                      imageWidget = Image.file(
+                      imageWidget = kIsWeb
+                          ? Image.memory(
+                        webImageBytes[img]!,
+                        fit: BoxFit.cover,
+                      )
+                          : Image.file(
                         File(img.path),
                         fit: BoxFit.cover,
                       );
@@ -228,7 +262,7 @@ class _UpdatePageState extends State<UpdatePage> {
                     }
 
                     return Stack(
-                      key: ValueKey(img.toString()),
+                      key: ValueKey(img.toString() + index.toString()),
                       children: [
                         Positioned.fill(child: imageWidget),
                         Positioned(
@@ -247,29 +281,39 @@ class _UpdatePageState extends State<UpdatePage> {
                     );
                   },
                 ),
+
                 const SizedBox(height: 24),
+
                 TextField(
                   controller: titleController,
                   decoration: const InputDecoration(labelText: "제목"),
                 ),
+
                 const SizedBox(height: 12),
+
                 TextField(
                   controller: textController,
                   decoration: const InputDecoration(labelText: "내용"),
                   maxLines: 5,
                 ),
+
                 const SizedBox(height: 12),
+
                 TextField(
                   controller: vesselController,
                   decoration:
                   const InputDecoration(labelText: "Vessel Code"),
                 ),
+
                 const SizedBox(height: 12),
+
                 TextField(
                   controller: bayController,
                   decoration: const InputDecoration(labelText: "Bay"),
                 ),
+
                 const SizedBox(height: 20),
+
                 Row(
                   children: [
                     const Text("Operation: "),
@@ -287,6 +331,7 @@ class _UpdatePageState extends State<UpdatePage> {
                     const Text("양하"),
                   ],
                 ),
+
                 Row(
                   children: [
                     const Text("Target: "),
@@ -307,6 +352,7 @@ class _UpdatePageState extends State<UpdatePage> {
               ],
             ),
           ),
+
           if (isLoading)
             const Positioned.fill(
               child: ColoredBox(
@@ -316,6 +362,7 @@ class _UpdatePageState extends State<UpdatePage> {
             ),
         ],
       ),
+
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
