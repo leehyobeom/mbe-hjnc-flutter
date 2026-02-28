@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'update.dart';
 
 class ReadPage extends StatefulWidget {
   final String communityId;
@@ -180,12 +181,29 @@ class _ReadPageState extends State<ReadPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Detail"),
+        title: const Text(""),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => UpdatePage(
+                    communityId: widget.communityId,
+                  ),
+                ),
+              );
+
+              if (result == true) {
+                fetchDetail(); // 수정 후 새로고침
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete),
             onPressed: showDeleteBottomSheet,
-          )
+          ),
         ],
       ),
       body: Stack(

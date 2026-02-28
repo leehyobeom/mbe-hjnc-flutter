@@ -129,7 +129,7 @@ class _ListPageState extends State<ListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Community")),
+      appBar: AppBar(title: const Text("")),
 
       body: Column(
         children: [
