@@ -6,8 +6,6 @@
 .DS_Store
 .atom/
 .build/*
-!.build/web/
-!.build/web/**
 .buildlog/
 .history
 .svn/
