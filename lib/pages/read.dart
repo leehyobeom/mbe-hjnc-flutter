@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 import 'update.dart';
 
 class ReadPage extends StatefulWidget {
@@ -43,17 +45,64 @@ class _ReadPageState extends State<ReadPage> {
         community = response.data['result'];
         isLoading = false;
       });
-
     } catch (e) {
       print("상세 로드 실패: $e");
       setState(() => isLoading = false);
     }
   }
 
-  /// 🔥 삭제 실행
-  Future<void> deleteCommunity() async {
+  /// 🔥 이미지 전체화면 뷰어
+  void openImageViewer(List images, int initialIndex) {
     final backUrl = dotenv.env['BACK_URL'];
 
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              PhotoViewGallery.builder(
+                pageController:
+                PageController(initialPage: initialIndex),
+                itemCount: images.length,
+                scrollPhysics: const BouncingScrollPhysics(),
+                builder: (context, index) {
+                  return PhotoViewGalleryPageOptions(
+                    imageProvider: NetworkImage(
+                      "$backUrl/${images[index]}",
+                    ),
+                    minScale: PhotoViewComputedScale.contained,
+                    maxScale:
+                    PhotoViewComputedScale.covered * 3,
+                  );
+                },
+                backgroundDecoration:
+                const BoxDecoration(color: Colors.black),
+              ),
+
+              /// 닫기 버튼
+              Positioned(
+                top: 50,
+                right: 20,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    child: Icon(Icons.close,
+                        color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> deleteCommunity() async {
+    final backUrl = dotenv.env['BACK_URL'];
     setState(() => isDeleting = true);
 
     try {
@@ -67,7 +116,6 @@ class _ReadPageState extends State<ReadPage> {
       setState(() => isDeleting = false);
 
       if (response.statusCode == 200) {
-        /// 성공 팝업
         showDialog(
           context: context,
           barrierDismissible: true,
@@ -77,8 +125,8 @@ class _ReadPageState extends State<ReadPage> {
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context); // 다이얼로그 닫기
-                  Navigator.pop(context, true); // 리스트로 이동
+                  Navigator.pop(context);
+                  Navigator.pop(context, true);
                 },
                 child: const Text("확인"),
               )
@@ -88,7 +136,6 @@ class _ReadPageState extends State<ReadPage> {
       } else {
         showFailDialog();
       }
-
     } catch (e) {
       setState(() => isDeleting = false);
       showFailDialog();
@@ -100,10 +147,12 @@ class _ReadPageState extends State<ReadPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("삭제 실패"),
-        content: const Text("삭제 중 오류가 발생했습니다."),
+        content:
+        const Text("삭제 중 오류가 발생했습니다."),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () =>
+                Navigator.pop(context),
             child: const Text("확인"),
           )
         ],
@@ -111,36 +160,44 @@ class _ReadPageState extends State<ReadPage> {
     );
   }
 
-  /// 🔥 삭제 확인 바텀시트
   void showDeleteBottomSheet() {
     showModalBottomSheet(
       context: context,
       builder: (_) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding:
+            const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+              MainAxisSize.min,
               children: [
                 const Text(
                   "정말 삭제하시겠습니까?",
-                  style: TextStyle(fontSize: 16),
+                  style: TextStyle(
+                      fontSize: 16),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                  style:
+                  ElevatedButton.styleFrom(
+                    backgroundColor:
+                    Colors.red,
                   ),
                   onPressed: () {
-                    Navigator.pop(context); // 바텀시트 닫기
+                    Navigator.pop(context);
                     deleteCommunity();
                   },
-                  child: const Text("삭제"),
+                  child:
+                  const Text("삭제"),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("취소"),
+                  onPressed: () =>
+                      Navigator.pop(
+                          context),
+                  child:
+                  const Text("취소"),
                 )
               ],
             ),
@@ -158,26 +215,32 @@ class _ReadPageState extends State<ReadPage> {
 
   @override
   Widget build(BuildContext context) {
-
     if (isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+            child:
+            CircularProgressIndicator()),
       );
     }
 
     if (community == null) {
       return const Scaffold(
-        body: Center(child: Text("데이터 없음")),
+        body:
+        Center(child: Text("데이터 없음")),
       );
     }
 
     final images = community!['images'] ?? [];
     final title = community!['title'] ?? "";
     final text = community!['text'] ?? "";
-    final vesselCode = community!['vesselCode'] ?? "";
-    final bay = community!['bay'] ?? "";
-    final isHold = community!['isHold'] == true;
-    final isLD = community!['isLD'] == true;
+    final vesselCode =
+        community!['vesselCode'] ?? "";
+    final bay =
+        community!['bay'] ?? "";
+    final isHold =
+        community!['isHold'] == true;
+    final isLD =
+        community!['isLD'] == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -186,23 +249,28 @@ class _ReadPageState extends State<ReadPage> {
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () async {
-              final result = await Navigator.push(
+              final result =
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => UpdatePage(
-                    communityId: widget.communityId,
-                  ),
+                  builder: (_) =>
+                      UpdatePage(
+                        communityId:
+                        widget.communityId,
+                      ),
                 ),
               );
 
               if (result == true) {
-                fetchDetail(); // 수정 후 새로고침
+                fetchDetail();
               }
             },
           ),
           IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: showDeleteBottomSheet,
+            icon:
+            const Icon(Icons.delete),
+            onPressed:
+            showDeleteBottomSheet,
           ),
         ],
       ),
@@ -210,79 +278,132 @@ class _ReadPageState extends State<ReadPage> {
         children: [
           SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding:
+              const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
                 children: [
 
                   /// 이미지 슬라이더
                   if (images.isNotEmpty) ...[
                     SizedBox(
                       height: 250,
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount: images.length,
-                        onPageChanged: (index) {
+                      child:
+                      PageView.builder(
+                        controller:
+                        _pageController,
+                        itemCount:
+                        images.length,
+                        onPageChanged:
+                            (index) {
                           setState(() {
-                            currentPage = index;
+                            currentPage =
+                                index;
                           });
                         },
-                        itemBuilder: (context, index) {
-                          return Image.network(
-                            "${dotenv.env['BACK_URL']}/${images[index]}",
-                            fit: BoxFit.cover,
+                        itemBuilder:
+                            (context,
+                            index) {
+                          return GestureDetector(
+                            onTap: () =>
+                                openImageViewer(
+                                    images,
+                                    index),
+                            child:
+                            Image.network(
+                              "${dotenv.env['BACK_URL']}/${images[index]}",
+                              fit: BoxFit
+                                  .cover,
+                            ),
                           );
                         },
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(
+                        height: 8),
+
+                    /// 페이지 인디케이터
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
+                      mainAxisAlignment:
+                      MainAxisAlignment
+                          .center,
+                      children:
+                      List.generate(
                         images.length,
-                            (index) => Container(
-                          margin:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                          width: currentPage == index ? 10 : 8,
-                          height: currentPage == index ? 10 : 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: currentPage == index
-                                ? Colors.blue
-                                : Colors.grey,
-                          ),
-                        ),
+                            (index) =>
+                            Container(
+                              margin: const EdgeInsets
+                                  .symmetric(
+                                  horizontal:
+                                  4),
+                              width:
+                              currentPage ==
+                                  index
+                                  ? 10
+                                  : 8,
+                              height:
+                              currentPage ==
+                                  index
+                                  ? 10
+                                  : 8,
+                              decoration:
+                              BoxDecoration(
+                                shape: BoxShape
+                                    .circle,
+                                color: currentPage ==
+                                    index
+                                    ? Colors
+                                    .blue
+                                    : Colors
+                                    .grey,
+                              ),
+                            ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(
+                        height: 24),
                   ],
 
                   const Text("제목",
                       style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey)),
-                  const SizedBox(height: 4),
+                          fontWeight:
+                          FontWeight.bold,
+                          color:
+                          Colors.grey)),
+                  const SizedBox(
+                      height: 4),
                   Text(title,
                       style: const TextStyle(
                           fontSize: 20,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 24),
+                          fontWeight:
+                          FontWeight
+                              .w600)),
+                  const SizedBox(
+                      height: 24),
 
                   const Text("내용",
                       style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey)),
-                  const SizedBox(height: 4),
+                          fontWeight:
+                          FontWeight.bold,
+                          color:
+                          Colors.grey)),
+                  const SizedBox(
+                      height: 4),
                   Text(text),
-                  const SizedBox(height: 24),
+                  const SizedBox(
+                      height: 24),
 
-                  Text("vessel code: $vesselCode    bay: $bay"),
-                  const SizedBox(height: 12),
+                  Text(
+                      "vessel code: $vesselCode    bay: $bay"),
+                  const SizedBox(
+                      height: 12),
 
                   Text(
                       "target: ${isHold ? "hold" : "deck"} / operation: ${isLD ? "선적" : "양하"}"),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(
+                      height: 40),
                 ],
               ),
             ),
@@ -292,7 +413,8 @@ class _ReadPageState extends State<ReadPage> {
             Container(
               color: Colors.black26,
               child: const Center(
-                child: CircularProgressIndicator(),
+                child:
+                CircularProgressIndicator(),
               ),
             )
         ],

@@ -74,7 +74,10 @@ class _UpdatePageState extends State<UpdatePage> {
   /// 이미지 선택
   /// ==============================
   Future<void> pickImages() async {
-    final picked = await picker.pickMultiImage();
+    final picked = await picker.pickMultiImage(
+      maxWidth: 1280,
+      maxHeight: 1280,
+    );
     if (picked.isEmpty) return;
 
     for (var file in picked) {

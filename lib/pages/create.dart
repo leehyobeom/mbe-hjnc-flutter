@@ -35,7 +35,10 @@ class _CreatePageState extends State<CreatePage> {
   /// 이미지 선택
   /// ==============================
   Future<void> pickImages() async {
-    final picked = await _picker.pickMultiImage();
+    final picked = await _picker.pickMultiImage(
+      maxWidth: 1280,
+      maxHeight: 1280,
+    );
     if (picked.isEmpty) return;
 
     if (images.length + picked.length > 9) {
@@ -102,10 +105,7 @@ class _CreatePageState extends State<CreatePage> {
       for (int i = 0; i < images.length; i++) {
         if (kIsWeb) {
           imageFiles.add(
-            MultipartFile.fromBytes(
-              webImages[i],
-              filename: images[i].name,
-            ),
+            MultipartFile.fromBytes(webImages[i], filename: images[i].name),
           );
         } else {
           imageFiles.add(
@@ -137,9 +137,9 @@ class _CreatePageState extends State<CreatePage> {
       );
 
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("업로드 성공")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("업로드 성공")));
         Navigator.pop(context);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -164,7 +164,6 @@ class _CreatePageState extends State<CreatePage> {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-
             /// 뒤로가기
             SliverToBoxAdapter(
               child: Align(
@@ -184,15 +183,13 @@ class _CreatePageState extends State<CreatePage> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: images.length < 9 ? images.length + 1 : 9,
-                  gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
                   ),
                   onReorder: reorder,
                   itemBuilder: (context, index) {
-
                     if (index == images.length && images.length < 9) {
                       return Container(
                         key: const ValueKey("add_button"),
@@ -207,8 +204,7 @@ class _CreatePageState extends State<CreatePage> {
                             children: [
                               Icon(Icons.add_photo_alternate, size: 30),
                               SizedBox(height: 6),
-                              Text("Add Image",
-                                  style: TextStyle(fontSize: 12)),
+                              Text("Add Image", style: TextStyle(fontSize: 12)),
                             ],
                           ),
                         ),
@@ -223,13 +219,13 @@ class _CreatePageState extends State<CreatePage> {
                             borderRadius: BorderRadius.circular(10),
                             child: kIsWeb
                                 ? Image.memory(
-                              webImages[index],
-                              fit: BoxFit.cover,
-                            )
+                                    webImages[index],
+                                    fit: BoxFit.cover,
+                                  )
                                 : Image.file(
-                              File(images[index].path),
-                              fit: BoxFit.cover,
-                            ),
+                                    File(images[index].path),
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
                         ),
                         Positioned(
@@ -363,9 +359,7 @@ class _CreatePageState extends State<CreatePage> {
                       minimumSize: const Size(double.infinity, 50),
                     ),
                     child: isUploading
-                        ? const CircularProgressIndicator(
-                      color: Colors.white,
-                    )
+                        ? const CircularProgressIndicator(color: Colors.white)
                         : const Text("업로드"),
                   ),
 
